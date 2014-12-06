@@ -1,0 +1,56 @@
+<html>
+<head>
+  <title>Ludum Dare 31: Entire Game on One Screen</title>
+  <meta name="author" content="Claire Blackshaw">
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+  <script src="MersenneTwister.js" type="text/javascript" ></script>
+  <script src="ludum.js" type="text/javascript" ></script>
+  <link type="text/css" rel="stylesheet" href="ludum.css">
+</head>
+<body>
+  <header>
+    <h2>
+      Ludum Dare 31: Entire Game on One Screen
+    </h1>
+    <h3>Game in 48 hours by
+      <span class="hover">&nbsp;
+        <em>Claire&nbsp;Blackshaw</em>
+        <b>Kimau</b>
+      </span>
+    </h3>
+  </header>
+
+<div id="gameBox">
+  <canvas id="canvas" width="400" height="300"></canvas>
+</div>
+
+<div id="gameResources">
+  <img id="imgHouse" src="house.gif" />
+</div>
+
+<div id="debugLog">
+</div>
+
+<dl id="liveOutput">
+</dl>
+
+<div><span class="buttonSpan" onclick="localStorage.clear(); location.reload(true);">New Game</span> </div>
+
+<script type="text/javascript">
+  window.onload = initGame;
+  if(window.location.search.match('dev') == null)
+  {
+    $("gameResources").style.display = "none";
+    $("debugLog").style.display = "none";
+    $("liveOutput").style.display = "none";
+    /*
+    $("gameResources").style.setProperty("display","none");
+    $("debugLog").style.setProperty("display","none");
+    $("liveOutput").style.setProperty("display","none");*/
+  }
+  else
+  {
+  }
+</script>
+</body>
+</html>
