@@ -78,7 +78,7 @@ var setPopup = function(head,body)
     }
 }
 
-var initGame = function()
+function initGame()
 {
     gameCanvasDom = $("canvas");
     gameCanvas = gameCanvasDom.getContext("2d");
@@ -86,9 +86,11 @@ var initGame = function()
     gameResources["house"] = $("imgHouse");
     
     createNewGame();
+    console.log("Game Started"); 
+    draw();
 }
 
-var createNewGame = function(playerName)
+function createNewGame(playerName)
 {
     gameState = NEW_GAME_STATE; 
     gameState.snowArray = new Uint8Array(WIDTH*HEIGHT);
@@ -96,15 +98,72 @@ var createNewGame = function(playerName)
     gameCanvas.fillStyle = "#000";
     gameCanvas.fillRect(0,0,WIDTH,HEIGHT);
     gameCanvas.drawImage(gameResources["house"],0,0,WIDTH,HEIGHT);
-    gameState.imageArray = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
+    gameState.imageLevel = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
 
     for(var i=0; i<gameState.snowArray.length; ++i) {
-        if((gameState.imageArray.data[i*4+0]+
-            gameState.imageArray.data[i*4+1]+
-            gameState.imageArray.data[i*4+2]) > 0)
+        if((gameState.imageLevel.data[i*4+0]+
+            gameState.imageLevel.data[i*4+1]+
+            gameState.imageLevel.data[i*4+2]) > 0)
             gameState.snowArray[i] = 128;
     } 
+
+    gameState.imageSnow = gameCanvas.createImageData(WIDTH,HEIGHT);
+    gameState.imageFinal = gameCanvas.createImageData(WIDTH,HEIGHT);
 } 
+
+
+function gameUpdate(dt) {
+
+    for(var i=0; i<gameState.snowArray.length; ++i) {
+        if(gameState.snowArray[i] & BIT_SNOW)
+        {
+            gameState.imageSnow.data[i*4+0] = 255;
+            gameState.imageSnow.data[i*4+1] = 255;
+            gameState.imageSnow.data[i*4+2] = 255;
+            gameState.imageSnow.data[i*4+3] = 255;
+        }
+        else
+        {
+            gameState.imageSnow.data[i*4+0] = 0;
+            gameState.imageSnow.data[i*4+1] = 0;
+            gameState.imageSnow.data[i*4+2] = 0;
+            gameState.imageSnow.data[i*4+3] = 0;
+        }
+    }
+
+    for(var i=0; i<gameState.imageFinal.data.length; i+=4)
+    {
+        var a = gameState.imageSnow.data[i+3] / 255.0;
+        var ai = (255 - gameState.imageSnow.data[i+3]) / 255.0;
+        gameState.imageFinal.data[i+0] = 
+            gameState.imageLevel.data[i+0]*ai + 
+            gameState.imageSnow.data[i+0]*a;
+        gameState.imageFinal.data[i+1] = 
+            gameState.imageLevel.data[i+1]*ai + 
+            gameState.imageSnow.data[i+1]*a;
+        gameState.imageFinal.data[i+2] = 
+            gameState.imageLevel.data[i+2]*ai + 
+            gameState.imageSnow.data[i+2]*a;
+        gameState.imageFinal.data[i+3] = 255;
+    } 
+}
+
+var continueUpdate = true;
+var prevTime; 
+function draw() {
+    if(continueUpdate)
+        requestAnimationFrame(draw);
+    var now = new Date().getTime();
+    var dt = now - (prevTime || now);
+    prevTime = now;
+
+    // Game Update
+    gameUpdate(dt);
+
+    // Drawing code goes here
+    gameCanvas.putImageData(gameState.imageFinal,0,0); 
+}
+
 
 //------------------------------------------------------------------------
 // Snow
@@ -121,7 +180,7 @@ var SPEED_SHIFT = 5;
 var MAX_SPEED = 7;
 var SNOW_SOLID = BIT_SOLID;
 
-var getSnowFlake = function(s)
+function getSnowFlake(s)
 {
     if((s & BIT_SNOW) == 0)
         return null;
@@ -133,7 +192,7 @@ var getSnowFlake = function(s)
     return [x,y,v];
 }
 
-var makeSnowFlake = function(x,y,v)
+function makeSnowFlake(x,y,v)
 {
     var s = BIT_SNOW;
     if(x < 0) s|= BIT_LEFT;
@@ -145,12 +204,15 @@ var makeSnowFlake = function(x,y,v)
     return s; 
 }
 
-var spawnSnowAtMouse = function(e)
+function spawnSnowAtMouse(e)
 {
-    spawnSnow(e.layerX,e.layerY);
+    spawnSnow(e.layerX / 2.0, (e.layerY / 2.0));
 }
 
-var spawnSnow(x,y)
+function spawnSnow(x,y)
 {
+    x = parseInt(x);
+    y = parseInt(y); 
     gameState.snowArray[x+y*WIDTH] = makeSnowFlake(0,0,1);
+    console.log("Made Snow at " + x + ":" + y);
 }
