@@ -260,7 +260,25 @@ function gameUpdate(dt) {
 
     if(gameState["blastSnow"])
     {
-        gameState.snowArray[x+(HEIGHT-(y+8))*WIDTH] = makeSnowFlake([0,8]);
+        var m = 0;
+
+        for(var sx = -2; sx <= +2; ++sx)
+        for(var sy = -2; sy <= +2; ++sy)
+        {
+            var i = x+sx+(HEIGHT-(y+sy))*WIDTH;
+            if(gameState.snowArray[i] | BIT_SNOW)
+            {
+                gameState.snowArray[i] = 0;
+                m += 1;
+            }
+        } 
+
+        for(var sx = -2; sx <= +2; ++sx)
+        for(var sy = -2; (m>0) && (sy <= +2); ++sy)
+        {
+            gameState.snowArray[x+sx+(HEIGHT-(y+8+sy))*WIDTH] = makeSnowFlake([0,8]);
+            m -= 1;
+        }
     }  
  
     if(gameState["shootLeft"])
@@ -310,17 +328,33 @@ function draw() {
         {
             if(gameState.snowArray[i] & BIT_REST)
             {
-                gameState.imageFinal.data[i*4+0] = 240; 
-                gameState.imageFinal.data[i*4+1] = 240;
-                gameState.imageFinal.data[i*4+2] = 240;
-                gameState.imageFinal.data[i*4+3] = 255;
+                gameState.imageFinal.data[i*4+0] = COL_SNOW_FRONT_REST; 
+                gameState.imageFinal.data[i*4+1] = COL_SNOW_FRONT_REST;
+                gameState.imageFinal.data[i*4+2] = COL_SNOW_FRONT_REST;
             }
             else
             {
-                gameState.imageFinal.data[i*4+0] = 255;
-                gameState.imageFinal.data[i*4+1] = 255;
-                gameState.imageFinal.data[i*4+2] = 255;
-                gameState.imageFinal.data[i*4+3] = 255;
+                gameState.imageFinal.data[i*4+0] = COL_SNOW_FRONT;
+                gameState.imageFinal.data[i*4+1] = COL_SNOW_FRONT;
+                gameState.imageFinal.data[i*4+2] = COL_SNOW_FRONT;
+
+/* COLOR SPEED 
+                var speedCol = [
+                [10,10,10],
+                [0,255,0],
+                [0,0,255],
+                [255,0,0],
+                [255,255,0],
+                [255,0,255],
+                [255,255,255],
+                [10,10,10],
+                ];
+
+                var z = speedCol[getSnowFlakePolar(gameState.snowArray[i])[1]];
+                gameState.imageFinal.data[i*4+0] = z[0];
+                gameState.imageFinal.data[i*4+1] = z[1];
+                gameState.imageFinal.data[i*4+2] = z[2];
+                /**/
             }
         }
         else if((gameState.imageFore.data[i*4+0] + 
@@ -335,17 +369,15 @@ function draw() {
         {            
             if(gameState.backSnowArray[i] & BIT_REST)
             {
-                gameState.imageFinal.data[i*4+0] = 180;
-                gameState.imageFinal.data[i*4+1] = 180;
-                gameState.imageFinal.data[i*4+2] = 180;
-                gameState.imageFinal.data[i*4+3] = 255;
+                gameState.imageFinal.data[i*4+0] = COL_SNOW_BACK_REST;
+                gameState.imageFinal.data[i*4+1] = COL_SNOW_BACK_REST;
+                gameState.imageFinal.data[i*4+2] = COL_SNOW_BACK_REST;
             }
             else
             {
-                gameState.imageFinal.data[i*4+0] = 200;
-                gameState.imageFinal.data[i*4+1] = 200;
-                gameState.imageFinal.data[i*4+2] = 200;
-                gameState.imageFinal.data[i*4+3] = 255;
+                gameState.imageFinal.data[i*4+0] = COL_SNOW_BACK;
+                gameState.imageFinal.data[i*4+1] = COL_SNOW_BACK;
+                gameState.imageFinal.data[i*4+2] = COL_SNOW_BACK;
             }
         }
     }
@@ -425,36 +457,67 @@ var SHIFT_COL   = 11;
 var MAX_DEG = 31;
 var DIR_TO_DEG = ((Math.PI * 2.0) / MAX_DEG);
 var DEG_TO_DIR = (MAX_DEG / (Math.PI * 2.0));
-var DEFAULT_DIR = 8; // DOWN
+var DIR_UP = 23; // UP
+var DIR_DOWN = 8; // DOWN
+var HALF_DIR = 15;
+var QUAT_DIR = 8;
 var MAX_SPEED = 7;
 var SNOW_EMPTY = 0; 
 var SNOW_REST = BIT_SNOW | BIT_REST;
 var SNOW_SOLID = BIT_SOLID;
 
+var COL_SNOW_FRONT = 255;
+var COL_SNOW_FRONT_REST = 240;
+var COL_SNOW_BACK = 200;
+var COL_SNOW_BACK_REST = 180;
+
+var SNOW_GRAV_CHANCE = 0.05;
+var SNOW_REST_CHANCE = 0.01;
 var SNOW_MELT_CHANCE = 0.0001; 
-var SNOWFALL_CHANCE_INVERT = 0.99;
+var SNOWFALL_CHANCE = 0.01;
 var SNOW_SPAWN_SIZE = 30;
 
-function getSnowFlake(s)
+var WIND_STRENGTH = 0.01;
+var WIND_INV_FREQ = 0.01;
+ 
+function getSnowFlakePolar(s) 
 {
     if((s & BIT_SNOW) == 0)
         return null;
     if(s & BIT_REST)
-        return [0,0,-1];
+        return [DIR_DOWN, 0, 0];
     if(s == BIT_SNOW)
-        return [0,-1,BIT_SNOW];
-    
-    var deg = ((s & MASK_DIR) >> SHIFT_DIR) * DIR_TO_DEG - Math.PI;
-    deg = deg % Math.PI; 
+        return [DIR_DOWN - Math.floor(Math.random()*3-1), 1, MAX_SPEED];
+ 
+    var deg = (s & MASK_DIR) >> SHIFT_DIR;
     var speed = (s & MASK_SPEED) >> SHIFT_SPEED;
-    
-    var x = (Math.cos(deg)*speed); 
-    var y = (Math.sin(deg)*speed);
+    var frame = (s & MASK_FRAME) >> SHIFT_FRAME;
 
-    return [x,y,s]; 
+    return [deg,speed,frame];
 }
 
-function makeSnowFlake(sf)
+function compilePolarFlake(pol)
+{ 
+    var s = BIT_SNOW |
+        ((pol[0] % MAX_DEG)   << SHIFT_DIR) |
+        (Math.min(pol[1], MAX_SPEED) << SHIFT_SPEED) |
+        ((pol[2] % MAX_SPEED) << SHIFT_FRAME);
+
+    return s;
+}
+
+function polarToCart(pol)
+{
+    var deg = pol[0] * DIR_TO_DEG - Math.PI;
+    deg = deg % Math.PI; 
+    
+    var x = (Math.cos(deg)*pol[1]); 
+    var y = (Math.sin(deg)*pol[1]);
+
+    return [x,y]; 
+}
+
+function cartToPolar(sf) 
 {
     var x = sf[0];
     var y = sf[1];
@@ -466,33 +529,57 @@ function makeSnowFlake(sf)
     if(speed < 1)
     { 
         speed = 1; 
-        deg = DEFAULT_DIR;  // fall down
+        deg = DIR_DOWN;  // fall down
     }
     else
     {
         speed = Math.round(Math.min(MAX_SPEED, speed));
     }
 
-    // Bit Pack & Return
-    var s = BIT_SNOW;// sf[2] & MASK_MVINV;
-    s |= deg << SHIFT_DIR;
-    s |= speed << SHIFT_SPEED;
-
-    return s;
+    return [deg, speed, 0];
 }
 
-function updateSnowFlake(sf)
+function rotDist (a,b) { 
+    var r = [(a-b + MAX_DEG) % MAX_DEG, (b-a + MAX_DEG) % MAX_DEG]; 
+    if(r[0] === r[1])
+        return [r[0], Math.floor(Math.random() * 2)*2-1];
+    else if(r[0] < r[1])
+        return [r[1],-1];
+    else
+        return [r[2],+1];
+}
+function addPolarForce(pol, forceDeg)
 {
-    var s = makeSnowFlake(sf);
-    
-    var speed = (s & MASK_SPEED) >> SHIFT_SPEED;
-    var frame = (sf[2] & MASK_FRAME) >> SHIFT_FRAME;
-    frame += speed;
-    var updateThisFrame = (frame >= MAX_SPEED);
-    frame = Math.floor(frame%MAX_SPEED);
-    
-    s |= frame << SHIFT_FRAME;
-    return [s,updateThisFrame]; 
+    if(pol[0] == forceDeg)
+    {
+        if(pol[1] < MAX_SPEED)
+            pol[1] += 1; 
+    }
+    else
+    { 
+        if(pol[1] <= 1)
+            pol[0] = forceDeg;
+        else
+        {
+            var a = rotDist(pol[0], forceDeg);
+            if(a[0] >= HALF_DIR)
+                pol[1] -= 1;
+            else if(a[0] >= QUAT_DIR)
+            {
+                pol[0] += a[1];
+                pol[1] -= 1;
+            }
+            else
+                pol[0] += a[1];
+        }
+    }
+
+    return pol;
+}
+
+function makeSnowFlake(sf)
+{
+    return compilePolarFlake(cartToPolar(sf));
 }
 
 function spawnSnowAtMouse(e)
@@ -550,11 +637,19 @@ function updateSnow(oldBuf)
     // Spawn Snow
     for(var x=0;x<WIDTH;x++) 
     { 
-        if(Math.random() > SNOWFALL_CHANCE_INVERT)  
-            spawnSnow(x,1,oldBuf);
+        if(Math.random() < SNOWFALL_CHANCE)  
+            spawnSnow(x,0,oldBuf);
     }
 
     for(var i=0; i<newBuf.length; ++i) { newBuf[i]=0; }
+
+    // Setup Wind
+    var windDir = 0;//DIR_DOWN + Math.floor(Math.random() * 5) - 2;
+    var windStrength = Math.sin(prevTime*WIND_INV_FREQ)*WIND_STRENGTH; 
+    if(windStrength < 0)
+        windDir = Math.floor(MAX_DEG / 2);
+    if(windDir === DIR_DOWN)
+        windStrength = 0;        
 
     // Move Snow 
     for(var i=0; i<newBuf.length; ++i) {
@@ -568,77 +663,102 @@ function updateSnow(oldBuf)
             var x = i % WIDTH;
             var y = HEIGHT - Math.floor(i / WIDTH);
 
-            if(Math.random() < SNOW_MELT_CHANCE)
+            if(y < 1)
+                newBuf[i] = SNOW_REST;
+            else if(oldBuf[i+WIDTH] === 0)
+                newBuf[i+WIDTH] = BIT_SNOW;
+            else if(Math.random() < SNOW_MELT_CHANCE)
             {
-                newBuf[i] = s;  // Random Melt
                 var di = i;
-                while((di > WIDTH) && (newBuf[di-WIDTH] & BIT_REST)) { di -= WIDTH; }
-                newBuf[di] = 0; 
-            }
-            else if((y<(HEIGHT-1)) && (oldBuf[i+WIDTH] & MASK_SUPPOT))
-            {
-                newBuf[i] = s;
-            }
-            else
-            { 
-                newBuf[i] = s^BIT_REST;
-                var di = i;
-                while((di > WIDTH) && (newBuf[di] & BIT_REST))
-                {
-                    newBuf[di] ^= BIT_REST;
+                while((di > WIDTH) && (newBuf[di-WIDTH] & BIT_SNOW))
+                { 
                     di -= WIDTH;
                 }
+                newBuf[i] = BIT_SNOW;
+                newBuf[di] = 0;
             }
+            else
+                newBuf[i] = SNOW_REST; 
         }
         else if(s & BIT_SNOW)
         {
-            var x = i % WIDTH;
-            var y = HEIGHT - Math.floor(i / WIDTH);
-            var sf = getSnowFlake(s);
+            var sPol = getSnowFlakePolar(s);
 
-            var res = updateSnowFlake(sf); 
-            if(res[1]) // is Snowflake moving this frame
+            // is Snowflake moving this frame
+            if((sPol[1]+sPol[2]) >= MAX_SPEED)
             {
-                sf[1] -= 0.5;
-                sf[0] += (Math.random() - 0.3) - 0.2*Math.sin(intFrameID / 100.0); 
-                var res = updateSnowFlake(sf); 
+                // Gravity
+                if(Math.random() < SNOW_GRAV_CHANCE)
+                    sPol = addPolarForce(sPol, DIR_DOWN);
+                else if(Math.random() < windStrength)
+                    sPol = addPolarForce(sPol, windDir);
+
+                // Move Flake
+                var sf = polarToCart(sPol)
+                var x = i % WIDTH;
+                var y = HEIGHT - Math.floor(i / WIDTH);
+                var m = 0;
 
                 if(Math.abs(sf[0]/sf[1]) > Math.random())
+                {
+                    m += 1;
                     x += (sf[0]>0.1) -(sf[0]<-0.1);
+                }
                 if(Math.abs(sf[1]/sf[0]) > Math.random())
+                {
+                    m += 1;
                     y += (sf[1]>0.1) -(sf[1]<-0.1);
+                }
+                if(m===0)
+                {
+                    if(Math.abs(sf[0]) > Math.abs(sf[1]))
+                        x += (sf[0]>0.1) -(sf[0]<-0.1);
+                    else
+                        y += (sf[1]>0.1) -(sf[1]<-0.1);
+                } 
 
                 if((x<0) || (x>WIDTH) || (y<0) || (y>HEIGHT))
                     continue;
-
+                
+                // Check Dest
                 var di = x+(HEIGHT-y)*WIDTH;
 
                 if(oldBuf[di] != 0)
-                {
+                { 
+                    sPol[1] = 1;
+
                     if((x>0) && (oldBuf[di-1] == 0))
                     {
-                        newBuf[di-1] = res[0];
-                    }
+                        newBuf[di-1] = compilePolarFlake(sPol);
+                    } 
                     else if((x<(WIDTH-1)) && (oldBuf[di+1] == 0))
                     {
-                        newBuf[di+1] = res[0];
+                        newBuf[di+1] = compilePolarFlake(sPol);
                     }
                     else
                     {
-                        if((x>1) && (oldBuf[di-2] != 0) && (x<(WIDTH-2)) && (oldBuf[di+2] != 0))
+                        if(y < 1)
+                            newBuf[i] = SNOW_REST;
+                        else if(oldBuf[i+WIDTH] === 0)
+                            newBuf[i+WIDTH] = compilePolarFlake(sPol);
+                        else if(Math.random() < SNOW_REST_CHANCE)    
                             newBuf[i] = SNOW_REST;
                         else
-                            newBuf[i] = res[0];
+                        {                              
+                            newBuf[i] = compilePolarFlake(sPol);
+                        }
                     }
                 }
-                else
+                else 
                 {
-                    newBuf[di] = res[0];
+                    newBuf[di] = compilePolarFlake(sPol);
                 } 
             }
             else
             {
-                newBuf[i] = res[0];   
+                sPol[2] += sPol[1];  
+                s = compilePolarFlake(sPol);
+                newBuf[i] = s;   
             }
         }
     }
