@@ -320,7 +320,7 @@ function snowBlaster(x,y,buf)
 {
     // Get Direction
     var armDir = [gameState.MousePos[0] - x,
-                  gameState.MousePos[1] - y];
+                  gameState.MousePos[1] - (y+4)];
     if((armDir[0]*armDir[0]+armDir[1]*armDir[1]) < 1000)
     {
         //suck
@@ -349,7 +349,7 @@ function snowBlaster(x,y,buf)
         var pol = cartToPolar(armDir);
 
         for(var sx = -12; sx <= +12; ++sx)
-        for(var sy = +1; sy <= 16; ++sy)
+        for(var sy = 0; sy <= 16; ++sy)
         {
             var i;
             if(armDir[0] > 0)
@@ -375,13 +375,18 @@ function snowBlaster(x,y,buf)
 
         if(m > 0)
         {
-            m *= 2;
+            m = Math.max(m,10); 
             var s = compilePolarFlake(pol);
             
             for(var sy = 0; (m>0) && (sy <= +12); ++sy)
             for(var sx = -3; (m>0) && (sx <= +3); ++sx)
             {
-                var i = I(x+sx,y+8+sy); 
+                var i;
+                if(armDir[0] > 0)
+                    i = I(x+6+sx, y+sy);
+                else
+                    i = I(x-6+sx, y+sy);
+
                 if(buf[i] === 0)
                 {
                     buf[i] = s;
@@ -751,8 +756,9 @@ function updateSnow(oldBuf)
     if(windDir === DIR_DOWN)
         windStrength = 0;        
 
+    var lostFlakes = 0;
+
     // Move Snow 
-    // Do All Stationary Snow First
     for(var i=0; i<newBuf.length; ++i) {
         var s = oldBuf[i]; 
         if(s & BIT_SOLID)
@@ -765,9 +771,13 @@ function updateSnow(oldBuf)
             var y = HEIGHT - Math.floor(i / WIDTH);
 
             if(y < 1)
+            {
                 newBuf[i] = SNOW_REST;
+            }
             else if(oldBuf[i+WIDTH] === 0)
+            {
                 newBuf[i+WIDTH] = BIT_SNOW;
+            }
             else if(Math.random() < SNOW_MELT_CHANCE)
             {
                 var di = i;
@@ -779,14 +789,22 @@ function updateSnow(oldBuf)
                 newBuf[di] = 0;
             }
             else
+            {
                 newBuf[i] = SNOW_REST; 
+            }
         }
         else if(s & BIT_SNOW)
-        {
+        { 
             var sPol = getSnowFlakePolar(s);
 
             // is Snowflake moving this frame
-            if((sPol[1]+sPol[2]) >= MAX_SPEED)
+            if((sPol[1]+sPol[2]) < MAX_SPEED)
+            {
+                sPol[2] += sPol[1];  
+                s = compilePolarFlake(sPol);
+                newBuf[i] = s;
+            }
+            else
             {
                 // Gravity
                 if(Math.random() < SNOW_GRAV_CHANCE)
@@ -824,9 +842,13 @@ function updateSnow(oldBuf)
                 // Check Dest
                 var di = x+(HEIGHT-y)*WIDTH;
 
-                if(oldBuf[di] != 0)
+                if(oldBuf[di] === 0)
+                {
+                    newBuf[di] = compilePolarFlake(sPol);
+                }
+                else
                 { 
-                    sPol[1] = 1;
+                    sPol[1] = 1; 
 
                     if((x>0) && (oldBuf[di-1] == 0))
                     {
@@ -836,35 +858,25 @@ function updateSnow(oldBuf)
                     {
                         newBuf[di+1] = compilePolarFlake(sPol);
                     }
+                    else if(y < 1) 
+                        newBuf[i] = SNOW_REST;
+                    else if(oldBuf[i+WIDTH] === 0)
+                        newBuf[i+WIDTH] = compilePolarFlake(sPol);
+                    else if(Math.random() < SNOW_REST_CHANCE)   
+                        newBuf[i] = SNOW_REST;
                     else
-                    {
-                        if(y < 1)
-                            newBuf[i] = SNOW_REST;
-                        else if(oldBuf[i+WIDTH] === 0)
-                            newBuf[i+WIDTH] = compilePolarFlake(sPol);
-                        else if(Math.random() < SNOW_REST_CHANCE)    
-                            newBuf[i] = SNOW_REST;
-                        else
-                        {                              
-                            newBuf[i] = compilePolarFlake(sPol);
-                        }
+                    {                              
+                        newBuf[i] = compilePolarFlake(sPol);
                     }
                 }
-                else 
-                {
-                    newBuf[di] = compilePolarFlake(sPol);
-                } 
-            }
-            else
-            {
-                sPol[2] += sPol[1];  
-                s = compilePolarFlake(sPol);
-                newBuf[i] = s;   
-            }
-        }
-    }
+            } 
+        } // End Snow
+    } // End Loop
     
     oldBuf.set(newBuf);
+
+    if(lostFlakes > 0)
+        console.log("Lost Flakes: " + lostFlakes);
 }
 
 window.onload = initGame;
