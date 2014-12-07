@@ -112,7 +112,9 @@ function updateMousePos(e)
 
 var keymap = {
     65:"keySLeft",
-    68:"keySRight"
+    68:"keySRight",
+    81:"shootLeft",
+    69:"shootRight"
 }
 function handleKey(e,a)
 {
@@ -246,6 +248,31 @@ function gameUpdate(dt) {
     {
         gameState.snowMan[3] -= 0.1;
         gameState.snowMan[1] += gameState.snowMan[3];
+    }
+
+    if(gameState["shootLeft"])
+    {
+       for(var sx=-20; sx < 1; ++sx)
+       for(var sy=-1; sy < 20; ++sy)
+       {
+        if(gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
+            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([-2,6,BIT_SNOW])[0];
+        if(gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
+            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([-2,6,BIT_SNOW])[0];
+       }
+    }
+
+    if(gameState["shootRight"])
+    {
+       for(var sx=-1; sx < 20; ++sx)
+       for(var sy=-1; sy < 20; ++sy)
+       {
+        if(gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
+            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([2,6,BIT_SNOW])[0];
+        if(gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
+            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([2,6,BIT_SNOW])[0];
+       
+       }
     }
 }
 
@@ -425,7 +452,7 @@ function updateSnowFlake(sf)
     var frame = (sf[2] & MASK_FRAME) >> SHIFT_FRAME;
               
     var deg = Math.atan2(y,x) + Math.PI;
-    deg = (deg * DEG_TO_DIR);
+    deg = Math.round(deg * DEG_TO_DIR); 
      
     var speed = Math.sqrt(x*x+y*y);
     if(speed < 1)
@@ -530,12 +557,7 @@ function updateSnow(oldBuf)
                 while((di > WIDTH) && (newBuf[di-WIDTH] & BIT_REST)) { di -= WIDTH; }
                 newBuf[di] = 0; 
             }
-            else if( (x>0) && 
-                (x<(WIDTH-1)) && 
-                (y<(HEIGHT-1)) &&
-                (oldBuf[i+WIDTH] & MASK_SUPPOT) && 
-                (oldBuf[i-1] & MASK_SUPPOT) &&
-                (oldBuf[i+1] & MASK_SUPPOT))
+            else if((y<(HEIGHT-1)) && (oldBuf[i+WIDTH] & MASK_SUPPOT))
             {
                 newBuf[i] = s;
             }
@@ -556,8 +578,8 @@ function updateSnow(oldBuf)
             var y = HEIGHT - Math.floor(i / WIDTH);
             var sf = getSnowFlake(s);
 
-            sf[1] -= (Math.random() * 5); 
-            sf[0] += (Math.random() - 0.3) - 0.7*Math.sin(intFrameID / 100.0); 
+            sf[1] -= 0.5;
+            sf[0] += (Math.random() - 0.3) - 0.2*Math.sin(intFrameID / 100.0); 
   
             var res = updateSnowFlake(sf); 
             if(res[1]) // is Snowflake moving this frame
