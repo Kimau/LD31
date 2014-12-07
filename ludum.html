@@ -26,6 +26,8 @@
 
 <div id="gameResources">
   <img id="imgHouse" src="house.gif" />
+  <img id="imgBack" src="houseBack.gif" />
+  <img id="imgGrad" src="backGrad.gif" />
 </div>
 
 <div id="debugLog">
@@ -37,7 +39,6 @@
 <div><span class="buttonSpan" onclick="localStorage.clear(); location.reload(true);">New Game</span> </div>
 
 <script type="text/javascript">
-  window.onload = initGame;
   if(window.location.search.match('dev') == null)
   {
     $("gameResources").style.display = "none";
