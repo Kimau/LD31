@@ -13,7 +13,8 @@ var m = new MersenneTwister();
 
 // Game Resources
 var NEW_GAME_STATE = {
-    playerName: "Player1"
+    playerName: "Player1",
+    MousePos:[0,0]
 }; 
 var gameState = {};
 var gameResources = {};
@@ -90,7 +91,11 @@ function initGame()
 
     gameResources["house"] = $("imgHouse");
     gameResources["back"] = $("imgBack");
-    gameResources["grad"] = $("imgGrad"); 
+    gameResources["grad"] = $("imgGrad");
+
+    window.onkeydown = handleKeyDown;
+    window.onkeyup   = handleKeyUp;
+    gameCanvasDom.onmousemove = updateMousePos; 
     
     createNewGame();
     console.log("Game Started"); 
@@ -98,11 +103,35 @@ function initGame()
     draw();
 }
 
+function updateMousePos(e)
+{
+    gameState.MousePos = [ 
+        Math.floor(e.layerX / 2.0),
+        Math.floor(e.layerY / 2.0)];
+}
+
+var keymap = {
+    65:"keySLeft",
+    68:"keySRight"
+}
+function handleKey(e,a)
+{
+    if(e.which in keymap)
+        gameState[keymap[e.which]] = a;
+    else
+        console.log([e.type, e.which]);
+}
+
+function handleKeyDown(e) {handleKey(e,1);}
+function handleKeyUp(e) {handleKey(e,0);}
+
 function createNewGame(playerName)
 {
     gameState = NEW_GAME_STATE; 
     gameState.snowArray = new Uint16Array(WIDTH*HEIGHT);
     gameState.backSnowArray = new Uint16Array(WIDTH*HEIGHT);
+
+    gameState.snowMan = [200,1,0,0];
 
     // Create Background
     gameCanvas.fillStyle = "#000";
@@ -153,6 +182,71 @@ function gameUpdate(dt) {
 
     updateSnow(gameState.snowArray);
     updateSnow(gameState.backSnowArray);
+
+    // Snow Man Logic
+    var x = gameState.snowMan[0];
+    var y = Math.floor(gameState.snowMan[1]);
+    var onSolid = 0;
+    
+    for(var sx=-3; sx < 3; ++sx)
+    {
+        var s = gameState.snowArray[x+sx+(HEIGHT-y)*WIDTH];
+        if((s & BIT_SOLID) || (s & BIT_REST))
+        {
+            onSolid = 1;
+            y += 1;
+            sx=-4;
+
+            if(y>HEIGHT)
+                return;
+        }
+    }
+    for(var sx=-3; sx < 3; ++sx)
+    {
+        var s = gameState.snowArray[x+sx+(HEIGHT-y+1)*WIDTH];
+        if(s & MASK_SUPPOT)
+        {
+            onSolid = 1;
+            sx = 5;
+        }
+    }
+
+    if(onSolid)
+    {
+        gameState.snowMan[3] = 0;
+        gameState.snowMan[1] = y;
+
+        var xDir = gameState["keySRight"] - gameState["keySLeft"];
+        if(xDir > 0)
+        {
+            // Right
+            var isPassable = 1;
+            var tx = x + 4;
+            for(var ty = y+2; isPassable && (ty < (y+8)); ++ty)
+                if(gameState.snowArray[tx+(HEIGHT-ty)*WIDTH] & MASK_SUPPOT)
+                    isPassable = 0;
+            
+            if(isPassable)
+                gameState.snowMan[0] += 1;
+        }
+        else if(xDir < 0)
+        {
+            // Left
+            var isPassable = 1;
+            var tx = x - 4;
+            for(var ty = y+2; isPassable && (ty < (y+8)); ++ty)
+                if(gameState.snowArray[tx+(HEIGHT-ty)*WIDTH] & MASK_SUPPOT)
+                    isPassable = 0;
+            
+            if(isPassable)
+                gameState.snowMan[0] -= 1;
+        }
+    }
+    else
+    {
+        gameState.snowMan[3] -= 0.1;
+        gameState.snowMan[1] += gameState.snowMan[3];
+    }
 }
 
 var reqFrame;
@@ -217,6 +311,58 @@ function draw() {
     }
     
     gameCanvas.putImageData(gameState.imageFinal,0,0);
+
+    // Draw Snowman
+    var armDir = [gameState.MousePos[0] - gameState.snowMan[0],
+                  gameState.MousePos[1] - (HEIGHT-(gameState.snowMan[1]+7))];
+    var al = Math.sqrt(armDir[0]*armDir[0]+armDir[1]*armDir[1]);
+    armDir = [gameState.snowMan[0] + armDir[0]/al*10,
+              (HEIGHT-(gameState.snowMan[1]+7)) + armDir[1]/al*10];
+
+    // Draw Arm 
+    gameCanvas.strokeStyle = "#000";
+    gameCanvas.beginPath();
+        gameCanvas.moveTo(gameState.snowMan[0], HEIGHT-(gameState.snowMan[1]+8));
+        gameCanvas.lineTo(armDir[0], armDir[1]);
+    gameCanvas.stroke();
+
+    // Draw Bottom
+    gameCanvas.strokeStyle = "#333";
+    gameCanvas.fillStyle = "#FFF";
+    gameCanvas.beginPath();
+    gameCanvas.ellipse(
+        gameState.snowMan[0],
+        HEIGHT-(gameState.snowMan[1]),
+        6,6,0,Math.PI*2,0);
+    gameCanvas.fill();
+    gameCanvas.stroke();
+
+    // Draw Torso
+    gameCanvas.beginPath();
+    gameCanvas.ellipse( 
+        gameState.snowMan[0],
+        HEIGHT-(gameState.snowMan[1]+6),
+        4.5,4.5,0,Math.PI*2,0);
+    gameCanvas.fill(); 
+    gameCanvas.stroke();
+
+
+    // Draw Head
+    gameCanvas.beginPath();
+    gameCanvas.ellipse(
+        gameState.snowMan[0],
+        HEIGHT-(gameState.snowMan[1]+11),
+        3,3,0,Math.PI*2,0);  
+    gameCanvas.fill();
+    gameCanvas.stroke();
+    
+    // Draw Front Arm
+    gameCanvas.strokeStyle = "#000";
+    gameCanvas.beginPath();
+        gameCanvas.moveTo(gameState.snowMan[0], HEIGHT-(gameState.snowMan[1]+6));
+        gameCanvas.lineTo(armDir[0], armDir[1]);
+    gameCanvas.stroke();
+
 }
 
 
@@ -244,7 +390,7 @@ var SNOW_EMPTY = 0;
 var SNOW_REST = BIT_SNOW | BIT_REST;
 var SNOW_SOLID = BIT_SOLID;
 
-var SNOW_MELT_CHANCE = 0.0001;
+var SNOW_MELT_CHANCE = 0.0003; 
 var SNOWFALL_CHANCE_INVERT = 0.99;
 var SNOW_SPAWN_SIZE = 30;
 
