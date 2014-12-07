@@ -121,12 +121,12 @@ function createNewGame(playerName)
     gameCanvas.fillStyle = "#000";
     gameCanvas.fillRect(0,0,WIDTH,HEIGHT);
     gameCanvas.drawImage(gameResources["house"],0,0,WIDTH,HEIGHT);
-    gameState.imageLevel = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
+    gameState.imageFore = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
 
     for(var i=0; i<gameState.snowArray.length; ++i) {
-        if((gameState.imageLevel.data[i*4+0]+
-            gameState.imageLevel.data[i*4+1]+
-            gameState.imageLevel.data[i*4+2]) > 0)
+        if((gameState.imageFore.data[i*4+0]+
+            gameState.imageFore.data[i*4+1]+
+            gameState.imageFore.data[i*4+2]) > 0)
             gameState.snowArray[i] = SNOW_SOLID;
     }
 
@@ -155,11 +155,12 @@ function gameUpdate(dt) {
     updateSnow(gameState.backSnowArray);
 }
 
+var reqFrame;
 var continueUpdate = true;
 var prevTime = performance.now(); 
 function draw() {
     if(continueUpdate)
-        requestAnimationFrame(draw);
+        reqFrame = requestAnimationFrame(draw); 
     var now = performance.now();
     var dt = now - prevTime;
     prevTime = now;
@@ -171,25 +172,47 @@ function draw() {
     gameState.imageFinal.data.set(gameState.imageLevel.data);
     
     for(var i=0; i<gameState.snowArray.length; ++i) {
-        if(gameState.backSnowArray[i] & BIT_SNOW)
-        {            
-            gameState.imageFinal.data[i*4+0] = 200;
-            gameState.imageFinal.data[i*4+1] = 200;
-            gameState.imageFinal.data[i*4+2] = 200;
-            gameState.imageFinal.data[i*4+3] = 255;
-        }
-    }
-    gameCanvas.putImageData(gameState.imageFinal,0,0);
-    gameCanvas.drawImage(gameResources["house"],0,0,WIDTH,HEIGHT);
-    gameState.imageFinal = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
-
-    for(var i=0; i<gameState.snowArray.length; ++i) {
         if(gameState.snowArray[i] & BIT_SNOW)
         {
-            gameState.imageFinal.data[i*4+0] = 255;
-            gameState.imageFinal.data[i*4+1] = 255;
-            gameState.imageFinal.data[i*4+2] = 255;
-            gameState.imageFinal.data[i*4+3] = 255;
+            if(gameState.snowArray[i] & BIT_REST)
+            {
+                gameState.imageFinal.data[i*4+0] = 240; 
+                gameState.imageFinal.data[i*4+1] = 240;
+                gameState.imageFinal.data[i*4+2] = 240;
+                gameState.imageFinal.data[i*4+3] = 255;
+            }
+            else
+            {
+                gameState.imageFinal.data[i*4+0] = 255;
+                gameState.imageFinal.data[i*4+1] = 255;
+                gameState.imageFinal.data[i*4+2] = 255;
+                gameState.imageFinal.data[i*4+3] = 255;
+            }
+        }
+        else if((gameState.imageFore.data[i*4+0] + 
+                 gameState.imageFore.data[i*4+1] +
+                 gameState.imageFore.data[i*4+2]) > 0)
+        {
+            gameState.imageFinal.data[i*4+0] = gameState.imageFore.data[i*4+0];
+            gameState.imageFinal.data[i*4+1] = gameState.imageFore.data[i*4+1];
+            gameState.imageFinal.data[i*4+2] = gameState.imageFore.data[i*4+2];
+        }
+        else if(gameState.backSnowArray[i] & BIT_SNOW)
+        {            
+            if(gameState.backSnowArray[i] & BIT_REST)
+            {
+                gameState.imageFinal.data[i*4+0] = 180;
+                gameState.imageFinal.data[i*4+1] = 180;
+                gameState.imageFinal.data[i*4+2] = 180;
+                gameState.imageFinal.data[i*4+3] = 255;
+            }
+            else
+            {
+                gameState.imageFinal.data[i*4+0] = 200;
+                gameState.imageFinal.data[i*4+1] = 200;
+                gameState.imageFinal.data[i*4+2] = 200;
+                gameState.imageFinal.data[i*4+3] = 255;
+            }
         }
     }
     
@@ -232,13 +255,13 @@ function getSnowFlake(s)
     if(s & BIT_REST)
         return [0,0,-1];
     if(s == BIT_SNOW)
-        return [0,-1];
+        return [0,-1,BIT_SNOW];
     
     var deg = ((s & MASK_DIR) >> SHIFT_DIR) * DIR_TO_DEG - Math.PI;
     deg = deg % Math.PI; 
     var speed = (s & MASK_SPEED) >> SHIFT_SPEED;
     
-    var x = (Math.cos(deg)*speed);
+    var x = (Math.cos(deg)*speed); 
     var y = (Math.sin(deg)*speed);
 
     return [x,y,s]; 
@@ -286,15 +309,40 @@ function spawnSnowAtMouse(e)
     var x = Math.floor(e.layerX / 2.0);
     var y = Math.floor(e.layerY / 2.0);
 
-    for(var sx=-SNOW_SPAWN_SIZE; sx < SNOW_SPAWN_SIZE; ++sx)
-    for(var sy=-SNOW_SPAWN_SIZE; sy < SNOW_SPAWN_SIZE; ++sy)
+    if(e.shiftKey)
     {
-        var c = 1 + Math.log2((sx*sx+sy*sy) / SNOW_SPAWN_SIZE);
-        if(c < Math.random())
-            spawnSnow(x + sx, y + sy, gameState.backSnowArray);
-        if(c < Math.random())
-            spawnSnow(x + sx, y + sy, gameState.snowArray);
+        // Clear Snow
+        for(var sx=-SNOW_SPAWN_SIZE; sx < SNOW_SPAWN_SIZE; ++sx)
+        for(var sy=-SNOW_SPAWN_SIZE; sy < SNOW_SPAWN_SIZE; ++sy)
+        {
+            var c = 1 + Math.log2((sx*sx+sy*sy) / SNOW_SPAWN_SIZE);
+            if(c < Math.random())
+                wipeSnow(x + sx, y + sy, gameState.backSnowArray);
+            if(c < Math.random())
+                wipeSnow(x + sx, y + sy, gameState.snowArray);
+        }
     }
+    else
+    {
+        // Place Snow
+        for(var sx=-SNOW_SPAWN_SIZE; sx < SNOW_SPAWN_SIZE; ++sx)
+        for(var sy=-SNOW_SPAWN_SIZE; sy < SNOW_SPAWN_SIZE; ++sy)
+        {
+            var c = 1 + Math.log2((sx*sx+sy*sy) / SNOW_SPAWN_SIZE);
+            if(c < Math.random())
+                spawnSnow(x + sx, y + sy, gameState.backSnowArray);
+            if(c < Math.random())
+                spawnSnow(x + sx, y + sy, gameState.snowArray);
+        }
+    }
+}
+
+function wipeSnow(x,y,buff)
+{
+    if(buff[x+y*WIDTH] & BIT_SOLID)
+        return;
+    
+    buff[x+y*WIDTH] = 0;
 }
 
 function spawnSnow(x,y,buff)
@@ -363,7 +411,7 @@ function updateSnow(oldBuf)
             var sf = getSnowFlake(s);
 
             sf[1] -= (Math.random() * 5); 
-            sf[0] += (Math.random() - 0.4) - 0.5*Math.sin(intFrameID / 100.0); 
+            sf[0] += (Math.random() - 0.3) - 0.7*Math.sin(intFrameID / 100.0); 
   
             var res = updateSnowFlake(sf); 
             if(res[1]) // is Snowflake moving this frame
