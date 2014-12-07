@@ -14,7 +14,10 @@ var m = new MersenneTwister();
 // Game Resources
 var NEW_GAME_STATE = {
     playerName: "Player1",
-    MousePos:[0,0]
+    MousePos:[0,0],
+    keySLeft: 0,
+    keySRight: 0,
+    blastSnow: 0 
 }; 
 var gameState = {};
 var gameResources = {};
@@ -96,12 +99,17 @@ function initGame()
     window.onkeydown = handleKeyDown;
     window.onkeyup   = handleKeyUp;
     gameCanvasDom.onmousemove = updateMousePos; 
+    gameCanvasDom.onmousedown = blastSnowOn;
+    gameCanvasDom.onmouseup = blastSnowOff;
     
     createNewGame();
     console.log("Game Started"); 
-    gameCanvasDom.onclick = spawnSnowAtMouse;
-    draw();
-}
+    // gameCanvasDom.onclick = spawnSnowAtMouse;
+    draw(); 
+} 
+
+function blastSnowOn(e)  { gameState.blastSnow = 1; }
+function blastSnowOff(e) { gameState.blastSnow = 0; }
 
 function updateMousePos(e)
 {
@@ -250,15 +258,20 @@ function gameUpdate(dt) {
         gameState.snowMan[1] += gameState.snowMan[3];
     }
 
+    if(gameState["blastSnow"])
+    {
+        gameState.snowArray[x+(HEIGHT-(y+8))*WIDTH] = makeSnowFlake([0,8]);
+    }  
+ 
     if(gameState["shootLeft"])
     {
        for(var sx=-20; sx < 1; ++sx)
        for(var sy=-1; sy < 20; ++sy)
        {
         if(gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
-            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([-2,6,BIT_SNOW])[0];
+            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = makeSnowFlake([-2,6]);
         if(gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
-            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([-2,6,BIT_SNOW])[0];
+            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = makeSnowFlake([-2,6]);
        }
     }
 
@@ -268,9 +281,9 @@ function gameUpdate(dt) {
        for(var sy=-1; sy < 20; ++sy)
        {
         if(gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
-            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([2,6,BIT_SNOW])[0];
+            gameState.backSnowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = makeSnowFlake([2,6]);
         if(gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] & BIT_SNOW)
-            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = updateSnowFlake([2,6,BIT_SNOW])[0];
+            gameState.snowArray[x+sx+(HEIGHT-(y+sy))*WIDTH] = makeSnowFlake([2,6]);
        
        }
     }
@@ -338,6 +351,7 @@ function draw() {
     }
     
     gameCanvas.putImageData(gameState.imageFinal,0,0);
+    var xDir = gameState["keySRight"] - gameState["keySLeft"];
 
     // Draw Snowman
     var armDir = [gameState.MousePos[0] - gameState.snowMan[0],
@@ -367,7 +381,7 @@ function draw() {
     // Draw Torso
     gameCanvas.beginPath();
     gameCanvas.ellipse( 
-        gameState.snowMan[0],
+        gameState.snowMan[0]+xDir,
         HEIGHT-(gameState.snowMan[1]+6),
         4.5,4.5,0,Math.PI*2,0);
     gameCanvas.fill(); 
@@ -377,7 +391,7 @@ function draw() {
     // Draw Head
     gameCanvas.beginPath();
     gameCanvas.ellipse(
-        gameState.snowMan[0],
+        gameState.snowMan[0]+xDir*3,
         HEIGHT-(gameState.snowMan[1]+11),
         3,3,0,Math.PI*2,0);  
     gameCanvas.fill();
@@ -440,16 +454,10 @@ function getSnowFlake(s)
     return [x,y,s]; 
 }
 
-function makeSnowFlake()
-{
-    return BIT_SNOW; 
-}
-
-function updateSnowFlake(sf)
+function makeSnowFlake(sf)
 {
     var x = sf[0];
     var y = sf[1];
-    var frame = (sf[2] & MASK_FRAME) >> SHIFT_FRAME;
               
     var deg = Math.atan2(y,x) + Math.PI;
     deg = Math.round(deg * DEG_TO_DIR); 
@@ -463,16 +471,26 @@ function updateSnowFlake(sf)
     else
     {
         speed = Math.round(Math.min(MAX_SPEED, speed));
-    } 
-
-    frame += speed;
-    var updateThisFrame = (frame >= MAX_SPEED);
-    frame = Math.floor(frame%MAX_SPEED);
+    }
 
     // Bit Pack & Return
     var s = BIT_SNOW;// sf[2] & MASK_MVINV;
     s |= deg << SHIFT_DIR;
-    s |= speed << SHIFT_SPEED; 
+    s |= speed << SHIFT_SPEED;
+
+    return s;
+}
+
+function updateSnowFlake(sf)
+{
+    var s = makeSnowFlake(sf);
+    
+    var speed = (s & MASK_SPEED) >> SHIFT_SPEED;
+    var frame = (sf[2] & MASK_FRAME) >> SHIFT_FRAME;
+    frame += speed;
+    var updateThisFrame = (frame >= MAX_SPEED);
+    frame = Math.floor(frame%MAX_SPEED);
+    
     s |= frame << SHIFT_FRAME;
     return [s,updateThisFrame]; 
 }
@@ -523,7 +541,7 @@ function spawnSnow(x,y,buff)
     if(buff[x+y*WIDTH] & BIT_SOLID)
         return;
     
-    buff[x+y*WIDTH] = makeSnowFlake();
+    buff[x+y*WIDTH] = BIT_SNOW;
 }
 
 var newBuf = new Uint16Array(WIDTH*HEIGHT); 
@@ -578,12 +596,13 @@ function updateSnow(oldBuf)
             var y = HEIGHT - Math.floor(i / WIDTH);
             var sf = getSnowFlake(s);
 
-            sf[1] -= 0.5;
-            sf[0] += (Math.random() - 0.3) - 0.2*Math.sin(intFrameID / 100.0); 
-  
             var res = updateSnowFlake(sf); 
             if(res[1]) // is Snowflake moving this frame
             {
+                sf[1] -= 0.5;
+                sf[0] += (Math.random() - 0.3) - 0.2*Math.sin(intFrameID / 100.0); 
+                var res = updateSnowFlake(sf); 
+
                 if(Math.abs(sf[0]/sf[1]) > Math.random())
                     x += (sf[0]>0.1) -(sf[0]<-0.1);
                 if(Math.abs(sf[1]/sf[0]) > Math.random())
