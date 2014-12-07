@@ -5,6 +5,7 @@
 /*jshint multistr:true */
 /*jshint sub:true */
 /*jshint browser:true */
+"use strict";
 
 /* ;( function() { OPTIMIZE */
 
@@ -17,6 +18,7 @@ var NEW_GAME_STATE = {
 var gameState = {};
 var gameResources = {};
 var gameCanvas;
+var gameCanvasDom;
 
 var WIDTH = 400;
 var HEIGHT = 300;
@@ -82,7 +84,7 @@ var setPopup = function(head,body)
 }
 
 function initGame()
-{
+{ 
     gameCanvasDom = $("canvas");
     gameCanvas = gameCanvasDom.getContext("2d");
 
@@ -197,21 +199,19 @@ function draw() {
 
 //------------------------------------------------------------------------
 // Snow
-
-// Snow
-var BIT_SNOW = 1;      //                   1
-var BIT_SOLID = 2;     //                  10
-var MASK_DIR = 124;    //            111 1100
-var MASK_SPEED = 896;  //        11 1000 0000
-var MASK_FRAME = 7168; //    1 1100 0000 0000
-var MASK_COL = 24576;  //  110 0000 0000 0000
-var BIT_REST = 32768;  // 1000 0000 0000 0000
+var MASK_DIR    = 31;  //           1 1111
+var MASK_SPEED = 224;  //        1110 0000
+var MASK_FRAME = 1792; //    111 0000 0000
+var MASK_COL =  6144;  // 1 1000 0000 0000
+var BIT_SOLID = 8192;  // 13
+var BIT_SNOW = 16384;  // 14
+var BIT_REST = 32768;  // 15
 var MASK_MVINV = 57347 // 1110 0000 0000 0011
 var MASK_SUPPOT = BIT_REST | BIT_SOLID | BIT_SNOW;
-var SHIFT_DIR = 2;
-var SHIFT_SPEED = 7;
-var SHIFT_FRAME = 10;
-var SHIFT_COL = 13;
+var SHIFT_DIR = 0;
+var SHIFT_SPEED = 5;
+var SHIFT_FRAME = 8;
+var SHIFT_COL   = 11;
 var MAX_DEG = 31;
 var DIR_TO_DEG = ((Math.PI * 2.0) / MAX_DEG);
 var DEG_TO_DIR = (MAX_DEG / (Math.PI * 2.0));
@@ -231,6 +231,8 @@ function getSnowFlake(s)
         return null;
     if(s & BIT_REST)
         return [0,0,-1];
+    if(s == BIT_SNOW)
+        return [0,-1];
     
     var deg = ((s & MASK_DIR) >> SHIFT_DIR) * DIR_TO_DEG - Math.PI;
     deg = deg % Math.PI; 
@@ -239,26 +241,26 @@ function getSnowFlake(s)
     var x = (Math.cos(deg)*speed);
     var y = (Math.sin(deg)*speed);
 
-    return [x,y]; 
+    return [x,y,s]; 
 }
 
 function makeSnowFlake()
 {
-    return 1185;
+    return BIT_SNOW; 
 }
 
-function updateSnowFlake(s, sf)
+function updateSnowFlake(sf)
 {
-    var x = sf[0] | 0;
-    var y = sf[1] | 0;
-    var frame = (s & MASK_FRAME) >> SHIFT_FRAME;
+    var x = sf[0];
+    var y = sf[1];
+    var frame = (sf[2] & MASK_FRAME) >> SHIFT_FRAME;
               
     var deg = Math.atan2(y,x) + Math.PI;
     deg = (deg * DEG_TO_DIR);
      
     var speed = Math.sqrt(x*x+y*y);
     if(speed < 1)
-    {
+    { 
         speed = 1; 
         deg = DEFAULT_DIR;  // fall down
     }
@@ -272,7 +274,7 @@ function updateSnowFlake(s, sf)
     frame = Math.floor(frame%MAX_SPEED);
 
     // Bit Pack & Return
-    s &= MASK_MVINV;
+    var s = BIT_SNOW;// sf[2] & MASK_MVINV;
     s |= deg << SHIFT_DIR;
     s |= speed << SHIFT_SPEED; 
     s |= frame << SHIFT_FRAME;
@@ -281,8 +283,8 @@ function updateSnowFlake(s, sf)
 
 function spawnSnowAtMouse(e)
 {
-    var x = e.layerX / 2.0;
-    var y = e.layerY / 2.0;
+    var x = Math.floor(e.layerX / 2.0);
+    var y = Math.floor(e.layerY / 2.0);
 
     for(var sx=-SNOW_SPAWN_SIZE; sx < SNOW_SPAWN_SIZE; ++sx)
     for(var sy=-SNOW_SPAWN_SIZE; sy < SNOW_SPAWN_SIZE; ++sy)
@@ -297,78 +299,73 @@ function spawnSnowAtMouse(e)
 
 function spawnSnow(x,y,buff)
 {
-    x = parseInt(x)|0;
-    y = parseInt(y)|0;
-
     if(buff[x+y*WIDTH] & BIT_SOLID)
         return;
     
     buff[x+y*WIDTH] = makeSnowFlake();
 }
 
-var newBuf = new Uint16Array(WIDTH*HEIGHT);
+var newBuf = new Uint16Array(WIDTH*HEIGHT); 
 function updateSnow(oldBuf)
 {
-    for (var i = 0; i < newBuf.length; i++) {
-        newBuf[i] = 0;
-    };
-
     // Spawn Snow
-    for(x=0;x<WIDTH;x++) 
+    for(var x=0;x<WIDTH;x++) 
     { 
         if(Math.random() > SNOWFALL_CHANCE_INVERT)  
             spawnSnow(x,1,oldBuf);
     }
 
+    for(var i=0; i<newBuf.length; ++i) { newBuf[i]=0; }
+
     // Move Snow 
-    for(var i=0; i<newBuf.length; ++i) { 
-        if(oldBuf[i] & BIT_SOLID)
+    for(var i=0; i<newBuf.length; ++i) {
+        var s = oldBuf[i]; 
+        if(s & BIT_SOLID)
         {
             newBuf[i] = oldBuf[i];
         }
-        else if(oldBuf[i] & BIT_REST)
+        else if(s & BIT_REST)
         {
             var x = i % WIDTH;
             var y = HEIGHT - Math.floor(i / WIDTH);
 
             if(Math.random() < SNOW_MELT_CHANCE)
             {
-                newBuf[i] = oldBuf[i];  // Random Melt
-                var upI = i;
-                while((upI > WIDTH) && (newBuf[upI-WIDTH] & BIT_REST)) { upI -= WIDTH; }
-                newBuf[upI] = 0; 
+                newBuf[i] = s;  // Random Melt
+                var di = i;
+                while((di > WIDTH) && (newBuf[di-WIDTH] & BIT_REST)) { di -= WIDTH; }
+                newBuf[di] = 0; 
             }
-            else if( (x>1) && 
-                (x<(WIDTH-2)) && 
+            else if( (x>0) && 
+                (x<(WIDTH-1)) && 
                 (y<(HEIGHT-1)) &&
                 (oldBuf[i+WIDTH] & MASK_SUPPOT) && 
                 (oldBuf[i-1] & MASK_SUPPOT) &&
                 (oldBuf[i+1] & MASK_SUPPOT))
             {
-                newBuf[i] = oldBuf[i];
+                newBuf[i] = s;
             }
             else
             { 
-                newBuf[i] = makeSnowFlake();
-                var upI = i;
-                while((upI > WIDTH) && (newBuf[upI] & BIT_REST))
+                newBuf[i] = s^BIT_REST;
+                var di = i;
+                while((di > WIDTH) && (newBuf[di] & BIT_REST))
                 {
-                    newBuf[upI] |= BIT_REST;
-                    upI -= WIDTH;
+                    newBuf[di] ^= BIT_REST;
+                    di -= WIDTH;
                 }
             }
         }
-        else if(oldBuf[i] & BIT_SNOW)
+        else if(s & BIT_SNOW)
         {
             var x = i % WIDTH;
             var y = HEIGHT - Math.floor(i / WIDTH);
-            var sf = getSnowFlake(oldBuf[i]);
+            var sf = getSnowFlake(s);
 
-            var oldY = sf[1];
             sf[1] -= (Math.random() * 5); 
-            sf[0] += (Math.random()*2.0) - 0.5*Math.sin(intFrameID / 100.0); 
+            sf[0] += (Math.random() - 0.4) - 0.5*Math.sin(intFrameID / 100.0); 
   
-            var res = updateSnowFlake(oldBuf[i], sf); 
+            var res = updateSnowFlake(sf); 
             if(res[1]) // is Snowflake moving this frame
             {
                 if(Math.abs(sf[0]/sf[1]) > Math.random())
@@ -389,7 +386,7 @@ function updateSnow(oldBuf)
                     }
                     else if((x<(WIDTH-1)) && (oldBuf[di+1] == 0))
                     {
-                        newBuf[di-1] = res[0];
+                        newBuf[di+1] = res[0];
                     }
                     else
                     {
@@ -402,7 +399,7 @@ function updateSnow(oldBuf)
                 else
                 {
                     newBuf[di] = res[0];
-                }
+                } 
             }
             else
             {
@@ -410,7 +407,7 @@ function updateSnow(oldBuf)
             }
         }
     }
-
+    
     oldBuf.set(newBuf);
 }
 
