@@ -3,8 +3,11 @@ body
   background: #111;
   color: #EEE;
   position: relative;
+  margin: 0px;
+  width: 800px;
+  overflow: hidden;
 }
-
+   
 header,
 div,
 canvas
