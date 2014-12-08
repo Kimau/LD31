@@ -15,9 +15,11 @@ var m = new MersenneTwister();
 var NEW_GAME_STATE = {
     playerName: "Player1",
     MousePos:[0,0],
+    snowMan : [210,10,0,0],
     keySLeft: 0,
     keySRight: 0,
-    blastSnow: 0 
+    blastSnow: 0,
+    suckSnow: 0 
 }; 
 var gameState = {};
 var gameResources = {};
@@ -89,24 +91,40 @@ var setPopup = function(head,body)
 
 function initGame()
 { 
+    cancelAnimationFrame(reqFrame);
+    
     gameCanvasDom = $("canvas");
     gameCanvas = gameCanvasDom.getContext("2d");
 
     gameResources["house"] = $("imgHouse");
     gameResources["back"] = $("imgBack");
     gameResources["grad"] = $("imgGrad");
+    gameResources["title"] = $("imgTitle");
+
+    createNewGame();
+    gameCanvasDom.onclick = startGame;
+    console.log("Game Ready"); 
+} 
+
+function startGame()
+{
+    console.log("Game Start"); 
+ 
 
     window.onkeydown = handleKeyDown;
     window.onkeyup   = handleKeyUp;
     gameCanvasDom.onmousemove = updateMousePos; 
-    gameCanvasDom.onmousedown = blastSnowOn;
-    gameCanvasDom.onmouseup = blastSnowOff;
-    
-    createNewGame();
-    console.log("Game Started"); 
-    // gameCanvasDom.onclick = spawnSnowAtMouse;
-    draw(); 
-} 
+    gameCanvasDom.onclick = spawnSnowAtMouse;
+
+    // Soft Start
+    reqFrame = requestAnimationFrame(draw); 
+    var now = performance.now();
+    var dt = now - prevTime;
+    prevTime = now;
+
+    // Game Update
+    gameUpdate(dt);
+}
 
 function outBounds(x,y) {
     return ((x<0) || (y<0) || (x >= WIDTH) || (y >= HEIGHT));
@@ -119,9 +137,6 @@ function clampGetI(x,y) {
     return x+(HEIGHT-y)*WIDTH;
 }
 
-function blastSnowOn(e)  { gameState.blastSnow = 1; }
-function blastSnowOff(e) { gameState.blastSnow = 0; }
-
 function updateMousePos(e)
 {
     gameState.MousePos = [ 
@@ -133,14 +148,16 @@ var keymap = {
     65:"keySLeft",
     68:"keySRight",
     81:"shootLeft",
-    69:"shootRight"
+    69:"shootRight",
+    83:"suckSnow",
+    87:"blastSnow"
 }
 function handleKey(e,a)
 {
     if(e.which in keymap)
         gameState[keymap[e.which]] = a;
-    else
-        console.log([e.type, e.which]);
+    
+    //console.log([e.type, e.which]);
 }
 
 function handleKeyDown(e) {handleKey(e,1);}
@@ -151,8 +168,6 @@ function createNewGame(playerName)
     gameState = NEW_GAME_STATE; 
     gameState.snowArray = new Uint16Array(WIDTH*HEIGHT);
     gameState.backSnowArray = new Uint16Array(WIDTH*HEIGHT);
-
-    gameState.snowMan = [200,1,0,0];
 
     // Create Background
     gameCanvas.fillStyle = "#000";
@@ -165,6 +180,21 @@ function createNewGame(playerName)
             gameState.imageLevel.data[i*4+1]+
             gameState.imageLevel.data[i*4+2]) > 0)
             gameState.backSnowArray[i] = SNOW_SOLID;
+    }
+
+    // Prepop Snow
+    gameCanvas.fillStyle = "#000";
+    gameCanvas.fillRect(0,0,WIDTH,HEIGHT);
+    gameCanvas.drawImage(gameResources["title"],0,0,WIDTH,HEIGHT);
+    gameState.imageFore = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
+    for(var i=0; i<gameState.snowArray.length; ++i) {
+        if((gameState.imageFore.data[i*4+0]+
+            gameState.imageFore.data[i*4+1]+
+            gameState.imageFore.data[i*4+2]) > 0)
+        {
+            gameState.backSnowArray[i] = BIT_SNOW;
+            gameState.snowArray[i] = BIT_SNOW;
+        }
     }
 
     // Create Foreground
@@ -187,6 +217,14 @@ function createNewGame(playerName)
 
     gameCanvas.clearRect(0,0,WIDTH,HEIGHT);
     gameState.imageFinal = gameCanvas.createImageData(WIDTH,HEIGHT);
+
+    // Title & Snowman
+    gameCanvas.drawImage(gameResources["grad"],0,0,WIDTH,HEIGHT);
+    gameCanvas.drawImage(gameResources["back"],0,0,WIDTH,HEIGHT);
+    gameCanvas.drawImage(gameResources["house"],0,0,WIDTH,HEIGHT);
+    gameCanvas.drawImage(gameResources["title"],0,0,WIDTH,HEIGHT);
+
+    drawSnowman();
 } 
 
 var timeSinceLast = 0;
@@ -278,13 +316,19 @@ function updateSnowman()
         gameState.snowMan[1] += gameState.snowMan[3];
     }
 
+    if(gameState["suckSnow"])
+    {
+        snowSucker(x,y,gameState.snowArray);
+        snowSucker(x,y,gameState.backSnowArray);
+    }
+
     if(gameState["blastSnow"])
     {
         snowBlaster(x,y,gameState.snowArray);
         snowBlaster(x,y,gameState.backSnowArray);
     }  
 
- 
+ /*
     if(gameState["shootLeft"])
     {
         var s = makeSnowFlake([-2,6]);
@@ -314,6 +358,28 @@ function updateSnowman()
                 gameState.snowArray[i] = s;       
        }
     }
+*/
+}
+
+function snowSucker(x,y,buf)
+{
+    for(var sx = x-25; sx <= x+25; ++sx)
+    for(var sy = y-1; sy <= y+35; ++sy)
+    {
+        var i = I(sx,sy);
+        if(buf[i] & BIT_SNOW)
+        {
+            var pol = cartToPolar([x-sx, y-sy]);
+            if(buf[i] & BIT_REST)
+                buf[i] = compilePolarFlake(pol);
+            else
+            {
+                var op = getSnowFlakePolar(buf[i]);
+                op = addPolarForce(op, pol[0]);
+                buf[i] = compilePolarFlake(op);
+            }
+        } 
+    }
 }
 
 function snowBlaster(x,y,buf)
@@ -321,80 +387,23 @@ function snowBlaster(x,y,buf)
     // Get Direction
     var armDir = [gameState.MousePos[0] - x,
                   gameState.MousePos[1] - (y+4)];
-    if((armDir[0]*armDir[0]+armDir[1]*armDir[1]) < 1000)
+    if((armDir[0]*armDir[0]+armDir[1]*armDir[1]) < 10)
+        return;
+
+    var m = 50;
+    var pol = cartToPolar(armDir);
+    var s = compilePolarFlake(pol);
+        
+    for(var sy = 0; (m>0) && (sy <= +12); ++sy)
+    for(var sx = -3; (m>0) && (sx <= +3); ++sx)
     {
-        //suck
-        for(var sx = x-25; sx <= x+25; ++sx)
-        for(var sy = y-1; sy <= y+35; ++sy)
+        var i = I(x+sx, y+sy);
+        if(buf[i] === 0)
         {
-            var i = I(sx,sy);
-            if(buf[i] & BIT_SNOW)
-            {
-                var pol = cartToPolar([x-sx, y-sy]);
-                if(buf[i] & BIT_REST)
-                    buf[i] = compilePolarFlake(pol);
-                else
-                {
-                    var op = getSnowFlakePolar(buf[i]);
-                    op = addPolarForce(op, pol[0]);
-                    buf[i] = compilePolarFlake(op);
-                }
-            }
+            buf[i] = s;
+            m -= 1;
         }
-    }
-    else
-    {
-        //blow
-        var m = 0;
-        var pol = cartToPolar(armDir);
-
-        for(var sx = -12; sx <= +12; ++sx)
-        for(var sy = 0; sy <= 16; ++sy)
-        {
-            var i;
-            if(armDir[0] > 0)
-                i = I(x+6+sx, y+sy);
-            else
-                i = I(x-6+sx, y+sy);
-
-            if(buf[i] & BIT_SNOW)
-            {
-                if(buf[i] & BIT_REST)
-                {
-                    buf[i] = 0;
-                    m += 1;
-                }
-                else
-                {
-                    var op = getSnowFlakePolar(buf[i]);
-                    op = addPolarForce(op, pol[0]);
-                    buf[i] = compilePolarFlake(op);
-                }
-            }
-        }
-
-        if(m > 0)
-        {
-            m = Math.max(m,10); 
-            var s = compilePolarFlake(pol);
-            
-            for(var sy = 0; (m>0) && (sy <= +12); ++sy)
-            for(var sx = -3; (m>0) && (sx <= +3); ++sx)
-            {
-                var i;
-                if(armDir[0] > 0)
-                    i = I(x+6+sx, y+sy);
-                else
-                    i = I(x-6+sx, y+sy);
-
-                if(buf[i] === 0)
-                {
-                    buf[i] = s;
-                    m -= 1;
-                }
-            } 
-        } 
-    }
+    } 
 }
 
 var reqFrame;
@@ -589,7 +598,7 @@ function getSnowFlakePolar(s)
     if(s & BIT_REST)
         return [DIR_DOWN, 0, 0];
     if(s == BIT_SNOW)
-        return [DIR_DOWN - Math.floor(Math.random()*3-1), 1, MAX_SPEED];
+        return [DIR_DOWN - Math.floor(Math.random()*3-1), 3, MAX_SPEED];
  
     var deg = (s & MASK_DIR) >> SHIFT_DIR;
     var speed = (s & MASK_SPEED) >> SHIFT_SPEED;
@@ -759,6 +768,7 @@ function updateSnow(oldBuf)
     var lostFlakes = 0;
 
     // Move Snow 
+    // TODO :: We Lose snow this way to update clash
     for(var i=0; i<newBuf.length; ++i) {
         var s = oldBuf[i]; 
         if(s & BIT_SOLID)
