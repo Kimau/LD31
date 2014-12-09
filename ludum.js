@@ -7,7 +7,7 @@
 /*jshint browser:true */
 "use strict";
 
-/* ;( function() { OPTIMIZE */
+;( function() { //OPTIMIZE */
 
 var m = new MersenneTwister();
 
@@ -20,8 +20,10 @@ var NEW_GAME_STATE = {
     keySRight: 0,
     blastSnow: 0,
     suckSnow: 0,
+    resetGame: 0,
     snowMaker: 0, 
     snowClearer: 0,
+    clearAllSnow: 0,
     snowStore: 1000000 
 }; 
 var gameState = {};
@@ -136,18 +138,17 @@ function SI(x,y) { return x+y*WIDTH; }
 
 function updateMousePos(e)
 {
-    gameState.MousePos = [ 
-        Math.floor(e.layerX / 2.0),
-        HEIGHT - Math.floor(e.layerY / 2.0)];
+    gameState.MousePos[0] = Math.floor(e.layerX / 2.0);
+    gameState.MousePos[1] = HEIGHT - Math.floor(e.layerY / 2.0);
 }
 
 var keymap = {
     65:"keySLeft",
     68:"keySRight",
     83:"suckSnow",
-    //87:"blastSnow",
-    //81:"snowClearer",
-    69:"snowMaker"
+    87:"snowMaker",
+    82:"resetGame",
+    48:"clearAllSnow"
 }
 function handleKey(e,a)
 {
@@ -184,6 +185,8 @@ function createNewGame(playerName)
     }
 
     // Prepop Snow
+    var dropSnow = makeSnowFlake([0,-7]); 
+
     gameCanvas.fillStyle = "#000";
     gameCanvas.fillRect(0,0,WIDTH,HEIGHT);
     gameCanvas.drawImage(gameResources["title"],0,0,WIDTH,HEIGHT);
@@ -194,8 +197,8 @@ function createNewGame(playerName)
             gameState.imageFore.data[vi+1]+
             gameState.imageFore.data[vi+2]) > 0)
         {
-            gameState.backSnowArray[i] = BIT_SNOW;
-            gameState.snowArray[i] = BIT_SNOW;
+            gameState.backSnowArray[i] = dropSnow; 
+            gameState.snowArray[i] = dropSnow;
         }
     }
 
@@ -211,6 +214,8 @@ function createNewGame(playerName)
             gameState.imageFore.data[vi+1]+
             gameState.imageFore.data[vi+2]) > 0)
             gameState.snowArray[i] = SNOW_SOLID;
+        else
+            gameState.imageFore.data[vi+3] = 0;
     }  
 
     // Create Real Image Background
@@ -218,7 +223,6 @@ function createNewGame(playerName)
     gameCanvas.drawImage(gameResources["back"],0,0,WIDTH,HEIGHT);
     gameState.imageLevel = gameCanvas.getImageData(0,0,WIDTH,HEIGHT);
 
-    gameCanvas.clearRect(0,0,WIDTH,HEIGHT);
     gameState.imageFinal = gameCanvas.createImageData(WIDTH,HEIGHT);
 
     // Title & Snowman
@@ -359,56 +363,52 @@ function draw() {
     // Drawing code goes here
     drawLevel();
     drawSnowman();
-}
+
+    // Special Actions
+    if(gameState["resetGame"])
+        return initGame();
+    if(gameState["clearAllSnow"])
+    {
+        clearAllSnow(gameState.backSnowArray);
+        clearAllSnow(gameState.snowArray);
+        gameState["clearAllSnow"] = 0;
+    }
+} 
 
 function drawLevel()
 {
-    gameState.imageFinal.data.set(gameState.imageLevel.data);
-    
-    for(var i=0; i<gameState.snowArray.length; ++i) {
-        var vi = ((i%WIDTH) + (HEIGHT -1- Math.floor(i/WIDTH))*WIDTH)*4;
+    console.time(); // 13ms avg
+    var x,y,i,vi;
+    var drawBuffer = gameState.imageFinal.data;
+    drawBuffer.set(gameState.imageLevel.data);
 
-        if(gameState.snowArray[i] & BIT_SNOW)
+    for(x=0; x<WIDTH; ++x)
+    for(y=0; y<HEIGHT; ++y) {
+        i = x+y*WIDTH;
+        vi = (x+(HEIGHT-y)*WIDTH)*4; 
+
+        if(gameState.snowArray[i] & BIT_SNOW) //
         {
-            gameState.imageFinal.data[vi+0] = COL_SNOW_FRONT;
-            gameState.imageFinal.data[vi+1] = COL_SNOW_FRONT;
-            gameState.imageFinal.data[vi+2] = COL_SNOW_FRONT;
-
-
-/* COLOR SPEED 
-            var speedCol = [
-            [10,10,10],
-            [0,255,0],
-            [0,0,255],
-            [255,0,0],
-            [255,255,0],
-            [255,0,255],
-            [255,255,255],
-            [10,10,10],
-            ];
-
-            var z = speedCol[getSnowFlakePolar(gameState.snowArray[i])[1]];
-            gameState.imageFinal.data[vi+0] = z[0];
-            gameState.imageFinal.data[vi+1] = z[1];
-            gameState.imageFinal.data[vi+2] = z[2];
-            /**/
+            drawBuffer[vi+0] = COL_SNOW_FRONT;
+            drawBuffer[vi+1] = COL_SNOW_FRONT;
+            drawBuffer[vi+2] = COL_SNOW_FRONT;
         }
-        else if((gameState.imageFore.data[vi+0] + 
-                 gameState.imageFore.data[vi+1] +
-                 gameState.imageFore.data[vi+2]) > 0)
+        else if(gameState.imageFore.data[vi+3])
         {
-            gameState.imageFinal.data[vi+0] = gameState.imageFore.data[vi+0];
-            gameState.imageFinal.data[vi+1] = gameState.imageFore.data[vi+1];
-            gameState.imageFinal.data[vi+2] = gameState.imageFore.data[vi+2];
+            drawBuffer[vi+0] = gameState.imageFore.data[vi+0];
+            drawBuffer[vi+1] = gameState.imageFore.data[vi+1];
+            drawBuffer[vi+2] = gameState.imageFore.data[vi+2];
         }
-        else if(gameState.backSnowArray[i] & BIT_SNOW)
+        else if(gameState.backSnowArray[i] & BIT_SNOW) // 
         {            
-            gameState.imageFinal.data[vi+0] = COL_SNOW_BACK;
-            gameState.imageFinal.data[vi+1] = COL_SNOW_BACK;
-            gameState.imageFinal.data[vi+2] = COL_SNOW_BACK;
+            drawBuffer[vi+0] = COL_SNOW_BACK;
+            drawBuffer[vi+1] = COL_SNOW_BACK;
+            drawBuffer[vi+2] = COL_SNOW_BACK;
         }
     }
+
     gameCanvas.putImageData(gameState.imageFinal,0,0);
+    console.timeEnd();
 } 
 
 function drawSnowman()
@@ -907,6 +907,13 @@ function updateSnow(oldBuff)
     gameState.snowStore += lostFlakes;
 }
 
+function clearAllSnow(buff)
+{
+    for(var i=0; i<buff.length;++i)
+        if(buff[i]&BIT_SNOW)
+            buff[i] = 0;
+}
+
 window.onload = initGame;
 
-/*})(); OPTIMIZE */
+})(); //OPTIMIZE */

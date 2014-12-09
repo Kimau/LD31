@@ -58,7 +58,7 @@ dd { text-align: left; }
 
 #gameResources 
 { 
-  display: block; 
+  display: none; 
   background: #000;
   position: absolute;
   left: 33%;
@@ -69,7 +69,7 @@ dd { text-align: left; }
 
 #debugLog 
 { 
-  display: block; 
+  display: none;
   white-space: pre-line; 
   position: absolute;
   width: 30%;
@@ -78,7 +78,7 @@ dd { text-align: left; }
 
 #liveOutput 
 { 
-  display: block; 
+  display: none; 
   position: absolute;
   right: 0px;
   width: 30%;
